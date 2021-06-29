@@ -1,69 +1,82 @@
-import { Chart } from "react-google-charts";
+import { useRef, useEffect } from 'react';
+import * as d3 from 'd3';
 
-const data = [
-    [
-      'Location',
-      'Parent',
-      'Market trade volume (size)',
-      'Market increase/decrease (color)',
-    ],
-    ['Global', null, 0, 0],
-    ['America', 'Global', 0, 0],
-    ['Europe', 'Global', 0, 0],
-    ['Asia', 'Global', 0, 0],
-    ['Australia', 'Global', 0, 0],
-    ['Africa', 'Global', 0, 0],
-    ['Brazil', 'America', 11, 10],
-    ['USA', 'America', 52, 31],
-    ['Mexico', 'America', 24, 12],
-    ['Canada', 'America', 16, -23],
-    ['France', 'Europe', 42, -11],
-    ['Germany', 'Europe', 31, -2],
-    ['Sweden', 'Europe', 22, -13],
-    ['Italy', 'Europe', 17, 4],
-    ['UK', 'Europe', 21, -5],
-    ['China', 'Asia', 36, 4],
-    ['Japan', 'Asia', 20, -12],
-    ['India', 'Asia', 40, 63],
-    ['Laos', 'Asia', 4, 34],
-    ['Mongolia', 'Asia', 1, -5],
-    ['Iran', 'Asia', 18, 13],
-    ['Pakistan', 'Asia', 11, -52],
-    ['Egypt', 'Africa', 21, 0],
-    ['S. Africa', 'Africa', 30, 43],
-    ['Sudan', 'Africa', 12, 2],
-    ['Congo', 'Africa', 10, 12],
-    ['Zaire', 'Africa', 8, 10],
-]
+export default function TreemapView({ data, width, height }) {
+  const svgRef = useRef(null);
 
+  function renderTreemap() {
+    const svg = d3.select(svgRef.current);
+    svg.selectAll('g').remove();
+    svg.attr('viewBox', [0, 0, width, height]).style('font', '10px sans-serif');
 
-const Loader = () => {
-    return <div> loding ... </div>
+    const root = d3
+      .hierarchy(data)
+      .sum(d => d.value)
+      .sort((a, b) => b.value - a.value);
+
+    const treemapRoot = d3.treemap().size([width, height]).padding(1)(root);
+
+    const nodes = svg
+      .selectAll('g')
+      .data(treemapRoot.leaves())
+      .join('g')
+      .attr('transform', d => `translate(${d.x0},${d.y0})`);
+
+    const fader = color => d3.interpolateRgb(color, '#fff')(0.3);
+    const colorScale = d3.scaleOrdinal(d3.schemeCategory10.map(fader));
+
+    nodes.attr('cursor', 'pointer').on('click', function () {
+      d3.selectAll('g').style('stroke', null); // or attr("stroke", null)
+      d3.select(this).style('stroke', 'red');
+    });
+
+    nodes
+      .append('rect')
+      .attr('fill', d => {
+        while (d.depth > 1) d = d.parent;
+        return colorScale(d.data.name);
+      })
+      .attr('fill-opacity', 1.0)
+      .attr('width', d => d.x1 - d.x0)
+      .attr('height', d => d.y1 - d.y0);
+
+    const format = d3.format(',d');
+    nodes.append('title').text(
+      d =>
+        `${d
+          .ancestors()
+          .reverse()
+          .map(d => d.data.name)
+          .join('/')}\n${format(d.value)}`,
+    );
+
+    nodes
+      .append('text')
+      .attr('clip-path', d => d.clipUid)
+      .selectAll('tspan')
+      .data(d =>
+        d.data.name.split(/(?=[A-Z][a-z])|\s+/g).concat(format(d.value)),
+      )
+      .join('tspan')
+      .attr('x', 3)
+      .attr(
+        'y',
+        (d, i, nodes) => `${(i === nodes.length - 1) * 0.3 + 1.1 + i * 0.9}em`,
+      )
+      .attr('fill-opacity', (d, i, nodes) =>
+        i === nodes.length - 1 ? 0.7 : null,
+      )
+      .text(d => d);
+  }
+
+  useEffect(() => {
+    renderTreemap();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data]);
+
+  return (
+    <div>
+      <svg ref={svgRef} />
+    </div>
+  );
 }
-
-const customStyles = {
-    minColor: '#f00',
-    midColor: '#ddd',
-    maxColor: '#0d0',
-    headerHeight: 15,
-    fontcolor: 'black',
-    showScale: true
-}
-
-const rootProps = { 'data-testid': '1'}
-
-const TreemapView = () => {
-    return (<div>
-        <Chart
-            width={'100%'}
-            height={'100%'}
-            chartType="TreeMap"
-            loader={<Loader />}
-            data={data}
-            options={customStyles}
-            rootPorps={rootProps}
-        />
-    </div>)
-}
-
-export default TreemapView
